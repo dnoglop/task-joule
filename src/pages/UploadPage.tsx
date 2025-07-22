@@ -110,9 +110,7 @@ const UploadPage: React.FC = () => {
     let skippedRows = 0;
 
     csvData.forEach((row, index) => {
-      // Skip header row if present and not already handled by PapaParse
-      if (index === 0 && row.task_name === 'task_name') return;
-
+      // O header já é tratado pela config `header: true`, então o primeiro item de `data` é a primeira linha de dados.
       const taskName = row.task_name;
       const programName = row.program_name;
       const assignedToEmail = row.assigned_to_email;
@@ -120,21 +118,21 @@ const UploadPage: React.FC = () => {
       const statusStr = row.status;
 
       if (!taskName || !programName) {
-        console.warn(`Linha ${index + 1}: 'task_name' ou 'program_name' ausente. Linha ignorada.`);
+        console.warn(`Linha de dados ${index + 1}: 'task_name' ou 'program_name' ausente. Linha ignorada.`);
         skippedRows++;
         return;
       }
 
       const programId = programMap.get(programName);
       if (!programId) {
-        console.warn(`Linha ${index + 1}: Programa '${programName}' não encontrado. Linha ignorada.`);
+        console.warn(`Linha de dados ${index + 1}: Programa '${programName}' não encontrado. Linha ignorada.`);
         skippedRows++;
         return;
       }
 
       const assignedToId = assignedToEmail ? profileMap.get(assignedToEmail) : undefined;
       if (assignedToEmail && !assignedToId) {
-        console.warn(`Linha ${index + 1}: Email do funcionário '${assignedToEmail}' não encontrado. Tarefa será atribuída como N/A.`);
+        console.warn(`Linha de dados ${index + 1}: Email do funcionário '${assignedToEmail}' não encontrado. Tarefa será atribuída como N/A.`);
       }
 
       let parsedDueDate: string | undefined = undefined;
@@ -144,16 +142,16 @@ const UploadPage: React.FC = () => {
           if (!isNaN(date.getTime())) {
             parsedDueDate = date.toISOString();
           } else {
-            console.warn(`Linha ${index + 1}: Formato de data inválido para '${dueDateStr}'. Prazo ignorado.`);
+            console.warn(`Linha de dados ${index + 1}: Formato de data inválido para '${dueDateStr}'. Prazo ignorado.`);
           }
         } catch (e) {
-          console.warn(`Linha ${index + 1}: Erro ao parsear data '${dueDateStr}'. Prazo ignorado.`, e);
+          console.warn(`Linha de dados ${index + 1}: Erro ao parsear data '${dueDateStr}'. Prazo ignorado.`, e);
         }
       }
 
       const taskStatus: TaskStatus = validStatuses.includes(statusStr as TaskStatus) ? statusStr as TaskStatus : 'pending';
-      if (!validStatuses.includes(statusStr as TaskStatus)) {
-        console.warn(`Linha ${index + 1}: Status inválido '${statusStr}'. Usando 'pending'.`);
+      if (statusStr && !validStatuses.includes(statusStr as TaskStatus)) {
+        console.warn(`Linha de dados ${index + 1}: Status inválido '${statusStr}'. Usando 'pending'.`);
       }
 
       tasksToInsert.push({
@@ -214,19 +212,21 @@ const UploadPage: React.FC = () => {
         <CardContent className="space-y-4">
           <CSVReader
             onUploadAccepted={(results: any) => {
+              // results.data contém um array de objetos, pois header: true
               setCsvData(results.data);
-              setFileName(results.file.name);
-              showSuccess(`Arquivo '${results.file.name}' carregado com ${results.data.length} linhas.`);
+              // 'results.file' pode não existir dependendo da versão, use um nome genérico se necessário
+              setFileName(results.file?.name || 'arquivo.csv');
+              showSuccess(`Arquivo '${results.file?.name || 'arquivo.csv'}' carregado com ${results.data.length} linhas de dados.`);
             }}
             config={{
-              header: true, // Assumes the first row is the header
+              header: true,
               skipEmptyLines: true,
             }}
           >
-            {({ getUploadFileProps }) => (
+            {({ getRootProps }: any) => (
               <Button
                 type="button"
-                onClick={getUploadFileProps().onClick}
+                {...getRootProps()} // <<< CORREÇÃO APLICADA AQUI
                 className="w-full"
                 variant="outline"
               >
@@ -237,7 +237,7 @@ const UploadPage: React.FC = () => {
           </CSVReader>
           {csvData.length > 0 && (
             <div className="text-sm text-muted-foreground">
-              {csvData.length} linhas lidas do CSV.
+              {csvData.length} linhas de dados prontas para importação.
             </div>
           )}
           <Button
