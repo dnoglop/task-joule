@@ -124,6 +124,9 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
       // !!! ATENÇÃO: Substitua 'invite-employee' pelo nome real da sua função !!!
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-employee`;
 
+      console.log("Tentando chamar a URL:", functionUrl); // <--- ADICIONE ESTA LINHA
+
+
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
