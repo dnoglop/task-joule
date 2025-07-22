@@ -14,7 +14,8 @@ import TasksPage from "./pages/TasksPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import ReportsPage from "./pages/ReportsPage";
 import EmployeeDetailsPage from "./pages/EmployeeDetailsPage";
-import UploadPage from "./pages/UploadPage"; // Importando a nova página
+import UploadPage from "./pages/UploadPage";
+import ProgramsPage from "./pages/ProgramsPage"; // Importando a nova página
 
 const queryClient = new QueryClient();
 
@@ -32,7 +33,8 @@ const App = () => (
             <Route path="/employees" element={<ProtectedRoute><MainLayout><EmployeesPage /></MainLayout></ProtectedRoute>} />
             <Route path="/employees/:id" element={<ProtectedRoute><MainLayout><EmployeeDetailsPage /></MainLayout></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><MainLayout><ReportsPage /></MainLayout></ProtectedRoute>} />
-            <Route path="/upload" element={<ProtectedRoute><MainLayout><UploadPage /></MainLayout></ProtectedRoute>} /> {/* Nova rota */}
+            <Route path="/upload" element={<ProtectedRoute><MainLayout><UploadPage /></MainLayout></ProtectedRoute>} />
+            <Route path="/programs" element={<ProtectedRoute><MainLayout><ProgramsPage /></MainLayout></ProtectedRoute>} /> {/* Nova rota */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
