@@ -8,9 +8,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Profile, UserRole } from '@/types/supabase';
-import { supabase } from '@/integrations/supabase/client';
-import { showError, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2 } from 'lucide-react';
 
 interface EmployeeFormDialogProps {
   isOpen: boolean;
@@ -22,10 +19,9 @@ interface EmployeeFormDialogProps {
 const employeeFormSchema = z.object({
   name: z.string().min(1, { message: "Nome é obrigatório." }),
   email: z.string().email({ message: "E-mail inválido." }),
-  area: z.string().optional().transform(e => e === "" ? undefined : e),
+  area: z.string().optional().transform(e => e === "" ? undefined : e), // Transforma "" em undefined
   role: z.enum(['employee', 'manager']).default('employee'),
-  // avatar_url agora pode ser uma string (URL existente) ou um File (novo upload)
-  avatar_url: z.union([z.literal(''), z.string().url({ message: "URL do avatar inválida." }), z.instanceof(File)]).optional().transform(e => e === "" ? undefined : e),
+  avatar_url: z.union([z.literal(''), z.string().url({ message: "URL do avatar inválida." })]).optional().transform(e => e === "" ? undefined : e), // Transforma "" em undefined
 });
 
 const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
@@ -34,10 +30,6 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
   onSubmit,
   initialData,
 }) => {
-  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
-  const [isUploading, setIsUploading] = React.useState(false);
-
   const form = useForm<z.infer<typeof employeeFormSchema>>({
     resolver: zodResolver(employeeFormSchema),
     defaultValues: {
@@ -58,8 +50,6 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
         role: initialData.role,
         avatar_url: initialData.avatar_url || '',
       });
-      setAvatarPreview(initialData.avatar_url || null);
-      setSelectedFile(null); // Clear selected file on initial data load
     } else {
       form.reset({
         name: '',
@@ -68,69 +58,17 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
         role: 'employee',
         avatar_url: '',
       });
-      setAvatarPreview(null);
-      setSelectedFile(null);
     }
   }, [initialData, form]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setAvatarPreview(URL.createObjectURL(file));
-      form.setValue('avatar_url', file); // Set the file object to the form value
-    } else {
-      setSelectedFile(null);
-      setAvatarPreview(initialData?.avatar_url || null); // Revert to initial or null
-      form.setValue('avatar_url', initialData?.avatar_url || ''); // Revert form value
-    }
-  };
-
-  const handleSubmit = async (values: z.infer<typeof employeeFormSchema>) => {
-    let finalAvatarUrl: string | undefined = undefined;
-    let loadingToastId: string | undefined;
-
-    try {
-      if (selectedFile) {
-        setIsUploading(true);
-        loadingToastId = showLoading("Fazendo upload da imagem...");
-        const fileExtension = selectedFile.name.split('.').pop();
-        const fileName = `${initialData?.id || crypto.randomUUID()}.${fileExtension}`;
-        const filePath = `avatars/${fileName}`;
-
-        const { data, error } = await supabase.storage
-          .from('avatars') // Assuming a bucket named 'avatars'
-          .upload(filePath, selectedFile, {
-            cacheControl: '3600',
-            upsert: true,
-          });
-
-        if (error) {
-          throw new Error("Erro ao fazer upload da imagem: " + error.message);
-        }
-        finalAvatarUrl = supabase.storage.from('avatars').getPublicUrl(filePath).data.publicUrl;
-      } else if (initialData?.avatar_url && !form.formState.dirtyFields.avatar_url) {
-        // If no new file selected and avatar_url wasn't explicitly cleared, keep existing
-        finalAvatarUrl = initialData.avatar_url;
-      }
-      // If selectedFile is null and initialData.avatar_url is null/undefined, finalAvatarUrl remains undefined
-
-      onSubmit({
-        ...values,
-        id: initialData?.id,
-        user_id: initialData?.user_id,
-        avatar_url: finalAvatarUrl, // Pass the uploaded URL or existing URL
-      });
-      onClose();
-    } catch (error: any) {
-      showError(error.message);
-      console.error("Submission error:", error);
-    } finally {
-      setIsUploading(false);
-      if (loadingToastId) {
-        dismissToast(loadingToastId);
-      }
-    }
+  const handleSubmit = (values: z.infer<typeof employeeFormSchema>) => {
+    // Os transforms no schema já garantem que "" se tornem undefined
+    onSubmit({
+      ...values,
+      id: initialData?.id, // Inclui ID se estiver editando
+      user_id: initialData?.user_id, // Inclui user_id se estiver editando
+    });
+    onClose();
   };
 
   const roleOptions: { value: UserRole; label: string }[] = [
@@ -164,12 +102,13 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             <Label htmlFor="email" className="text-right">
               Email
             </Label>
+            {/* Desabilita edição de email para usuários existentes */}
             <Input
               id="email"
               type="email"
               {...form.register('email')}
               className="col-span-3"
-              disabled={!!initialData} {/* Desabilita edição de email para usuários existentes */}
+              disabled={!!initialData}
             />
             {form.formState.errors.email && (
               <p className="col-span-4 text-right text-sm text-red-500">
@@ -208,21 +147,16 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             </Select>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="avatar_file" className="text-right">
-              Foto do Avatar
+            <Label htmlFor="avatar_url" className="text-right">
+              URL do Avatar
             </Label>
             <Input
-              id="avatar_file"
-              type="file"
-              accept="image/png, image/jpeg"
-              onChange={handleFileChange}
+              id="avatar_url"
+              type="url"
+              {...form.register('avatar_url')}
               className="col-span-3"
+              placeholder="https://example.com/avatar.jpg"
             />
-            {avatarPreview && (
-              <div className="col-span-4 flex justify-end">
-                <img src={avatarPreview} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover mt-2" />
-              </div>
-            )}
             {form.formState.errors.avatar_url && (
               <p className="col-span-4 text-right text-sm text-red-500">
                 {form.formState.errors.avatar_url.message}
@@ -230,10 +164,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isUploading}>
-              {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {initialData ? 'Salvar Alterações' : 'Adicionar Funcionário'}
-            </Button>
+            <Button type="submit">{initialData ? 'Salvar Alterações' : 'Adicionar Funcionário'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
