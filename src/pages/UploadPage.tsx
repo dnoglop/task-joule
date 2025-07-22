@@ -223,7 +223,7 @@ const UploadPage: React.FC = () => {
               skipEmptyLines: true,
             }}
           >
-            {({ get  }) => (
+            {({ getUploadFileProps }) => (
               <Button
                 type="button"
                 onClick={getUploadFileProps().onClick}
