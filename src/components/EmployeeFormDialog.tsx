@@ -19,9 +19,9 @@ interface EmployeeFormDialogProps {
 const employeeFormSchema = z.object({
   name: z.string().min(1, { message: "Nome é obrigatório." }),
   email: z.string().email({ message: "E-mail inválido." }),
-  area: z.string().optional(),
+  area: z.string().optional().transform(e => e === "" ? undefined : e), // Transforma "" em undefined
   role: z.enum(['employee', 'manager']).default('employee'),
-  avatar_url: z.string().url({ message: "URL do avatar inválida." }).optional().or(z.literal('')),
+  avatar_url: z.union([z.literal(''), z.string().url({ message: "URL do avatar inválida." })]).optional().transform(e => e === "" ? undefined : e), // Transforma "" em undefined
 });
 
 const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
@@ -62,10 +62,11 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
   }, [initialData, form]);
 
   const handleSubmit = (values: z.infer<typeof employeeFormSchema>) => {
+    // Os transforms no schema já garantem que "" se tornem undefined
     onSubmit({
       ...values,
-      id: initialData?.id, // Include ID if editing
-      user_id: initialData?.user_id, // Include user_id if editing
+      id: initialData?.id, // Inclui ID se estiver editando
+      user_id: initialData?.user_id, // Inclui user_id se estiver editando
     });
     onClose();
   };
@@ -101,13 +102,12 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             <Label htmlFor="email" className="text-right">
               Email
             </Label>
-            {/* Disable email editing for existing users */}
             <Input
               id="email"
               type="email"
               {...form.register('email')}
               className="col-span-3"
-              disabled={!!initialData} 
+              disabled={!!initialData} {/* Desabilita edição de email para usuários existentes */}
             />
             {form.formState.errors.email && (
               <p className="col-span-4 text-right text-sm text-red-500">
