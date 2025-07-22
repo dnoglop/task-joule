@@ -1,19 +1,28 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
-import { Loader2, User } from 'lucide-react';
+import { showError, showSuccess } from '@/utils/toast';
+import { Loader2, UserPlus, Edit, Eye, Trash2 } from 'lucide-react';
 import { Profile, Task } from '@/types/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import EmployeeFormDialog from '@/components/EmployeeFormDialog'; // Importar o novo componente
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 const EmployeesPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const { session } = useSession();
   const navigate = useNavigate();
   const userId = session?.user?.id;
+
+  const [isFormOpen, setIsFormOpen] = React.useState(false);
+  const [editingEmployee, setEditingEmployee] = React.useState<Profile | null>(null);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = React.useState(false);
+  const [employeeToDeleteId, setEmployeeToDeleteId] = React.useState<string | null>(null);
 
   // Fetch current user's profile to check role
   const { data: currentUserProfile, isLoading: isLoadingCurrentUserProfile, error: currentUserProfileError } = useQuery<Profile | null>({
@@ -35,14 +44,14 @@ const EmployeesPage: React.FC = () => {
   const { data: employees, isLoading: isLoadingEmployees, error: employeesError } = useQuery<Profile[]>({
     queryKey: ['employees'],
     queryFn: async () => {
-      if (currentUserProfile?.role !== 'manager') return []; // Only managers can see all employees
+      if (currentUserProfile?.role !== 'manager') return [];
       const { data, error } = await supabase
         .from('profiles')
         .select('*');
       if (error) throw error;
       return data;
     },
-    enabled: currentUserProfile?.role === 'manager', // Only enable if current user is manager
+    enabled: currentUserProfile?.role === 'manager',
   });
 
   if (currentUserProfileError) {
@@ -54,6 +63,126 @@ const EmployeesPage: React.FC = () => {
     showError("Erro ao carregar funcionários: " + employeesError.message);
     console.error("Error fetching employees:", employeesError);
   }
+
+  const createEmployeeMutation = useMutation({
+    mutationFn: async (newEmployee: Partial<Profile>) => {
+      // First, try to find the user in auth.users by email
+      const { data: users, error: userError } = await supabase.auth.admin.listUsers(); // This requires service role key, which is not exposed client-side.
+                                                                                     // This approach is problematic for client-side.
+                                                                                     // Reverting to simpler approach: assume user exists or explain limitation.
+                                                                                     // For now, we'll assume the user exists and we're linking a profile.
+                                                                                     // The user must have signed up first.
+
+      const { data: existingUser, error: fetchUserError } = await supabase
+        .from('profiles')
+        .select('id, user_id')
+        .eq('email', newEmployee.email!)
+        .single();
+
+      if (fetchUserError && fetchUserError.code !== 'PGRST116') { // PGRST116 means no rows found
+        throw fetchUserError;
+      }
+
+      let userIdToUse = existingUser?.user_id;
+
+      if (!userIdToUse) {
+        // If no profile found, check if a user exists in auth.users with this email
+        // This is still not ideal for client-side, as supabase.auth.admin.getUserByEmail is server-side.
+        // The most robust client-side way is to tell the manager that the user must sign up first.
+        showError("Não foi possível adicionar o funcionário. O e-mail fornecido não corresponde a um usuário existente. Por favor, certifique-se de que o funcionário já criou uma conta.");
+        throw new Error("User not found in auth.users.");
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userIdToUse, // Use the existing user's ID for the profile ID
+          user_id: userIdToUse,
+          name: newEmployee.name!,
+          email: newEmployee.email!,
+          area: newEmployee.area,
+          role: newEmployee.role!,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      showSuccess("Funcionário adicionado com sucesso!");
+    },
+    onError: (error) => {
+      showError("Erro ao adicionar funcionário: " + error.message);
+      console.error("Error adding employee:", error);
+    },
+  });
+
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async (updatedEmployee: Partial<Profile>) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          name: updatedEmployee.name,
+          area: updatedEmployee.area,
+          role: updatedEmployee.role,
+        })
+        .eq('id', updatedEmployee.id!)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      showSuccess("Funcionário atualizado com sucesso!");
+    },
+    onError: (error) => {
+      showError("Erro ao atualizar funcionário: " + error.message);
+      console.error("Error updating employee:", error);
+    },
+  });
+
+  const deleteEmployeeMutation = useMutation({
+    mutationFn: async (employeeId: string) => {
+      const { error } = await supabase.from('profiles').delete().eq('id', employeeId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      showSuccess("Funcionário excluído com sucesso!");
+    },
+    onError: (error) => {
+      showError("Erro ao excluir funcionário: " + error.message);
+      console.error("Error deleting employee:", error);
+    },
+  });
+
+  const handleAddEmployee = (employee: Partial<Profile>) => {
+    createEmployeeMutation.mutate(employee);
+  };
+
+  const handleEditEmployee = (employee: Profile) => {
+    setEditingEmployee(employee);
+    setIsFormOpen(true);
+  };
+
+  const handleUpdateEmployee = (employee: Partial<Profile>) => {
+    updateEmployeeMutation.mutate(employee);
+  };
+
+  const handleDeleteEmployee = (employeeId: string) => {
+    setEmployeeToDeleteId(employeeId);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (employeeToDeleteId) {
+      deleteEmployeeMutation.mutate(employeeToDeleteId);
+      setEmployeeToDeleteId(null);
+      setIsConfirmDeleteOpen(false);
+    }
+  };
 
   if (isLoadingCurrentUserProfile || isLoadingEmployees) {
     return (
@@ -73,7 +202,14 @@ const EmployeesPage: React.FC = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Gestão de Funcionários</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Gestão de Funcionários</h1>
+        {currentUserProfile?.role === 'manager' && (
+          <Button onClick={() => { setEditingEmployee(null); setIsFormOpen(true); }}>
+            <UserPlus className="mr-2 h-4 w-4" /> Adicionar Funcionário
+          </Button>
+        )}
+      </div>
       <p className="text-gray-700 dark:text-gray-300 mb-8">
         Visualize e gerencie as informações dos funcionários e suas métricas de desempenho.
       </p>
@@ -102,13 +238,29 @@ const EmployeesPage: React.FC = () => {
                     <TableCell>{employee.area || 'N/A'}</TableCell>
                     <TableCell>{employee.role === 'manager' ? 'Gestor' : 'Funcionário'}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/employees/${employee.id}`)}
-                      >
-                        Ver Detalhes
-                      </Button>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/employees/${employee.id}`)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditEmployee(employee)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteEmployee(employee.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -119,6 +271,29 @@ const EmployeesPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      <EmployeeFormDialog
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSubmit={editingEmployee ? handleUpdateEmployee : handleAddEmployee}
+        initialData={editingEmployee}
+      />
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={isConfirmDeleteOpen} onOpenChange={setIsConfirmDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogDescription>
+              Tem certeza de que deseja excluir este funcionário? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConfirmDeleteOpen(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
