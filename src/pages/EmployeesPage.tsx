@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import EmployeeFormDialog from '@/components/EmployeeFormDialog'; // Importar o novo componente
+import EmployeeFormDialog from '@/components/EmployeeFormDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
@@ -64,53 +64,20 @@ const EmployeesPage: React.FC = () => {
     console.error("Error fetching employees:", employeesError);
   }
 
-  const createEmployeeMutation = useMutation({
+  const inviteEmployeeMutation = useMutation({
     mutationFn: async (newEmployee: Partial<Profile>) => {
-      // First, try to find the user in auth.users by email
-      const { data: users, error: userError } = await supabase.auth.admin.listUsers(); // This requires service role key, which is not exposed client-side.
-                                                                                     // This approach is problematic for client-side.
-                                                                                     // Reverting to simpler approach: assume user exists or explain limitation.
-                                                                                     // For now, we'll assume the user exists and we're linking a profile.
-                                                                                     // The user must have signed up first.
+      // Invoke the Edge Function to invite the user and create their profile
+      const { data, error } = await supabase.functions.invoke('invite-employee', {
+        body: JSON.stringify(newEmployee),
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-      const { data: existingUser, error: fetchUserError } = await supabase
-        .from('profiles')
-        .select('id, user_id')
-        .eq('email', newEmployee.email!)
-        .single();
-
-      if (fetchUserError && fetchUserError.code !== 'PGRST116') { // PGRST116 means no rows found
-        throw fetchUserError;
-      }
-
-      let userIdToUse = existingUser?.user_id;
-
-      if (!userIdToUse) {
-        // If no profile found, check if a user exists in auth.users with this email
-        // This is still not ideal for client-side, as supabase.auth.admin.getUserByEmail is server-side.
-        // The most robust client-side way is to tell the manager that the user must sign up first.
-        showError("Não foi possível adicionar o funcionário. O e-mail fornecido não corresponde a um usuário existente. Por favor, certifique-se de que o funcionário já criou uma conta.");
-        throw new Error("User not found in auth.users.");
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-          id: userIdToUse, // Use the existing user's ID for the profile ID
-          user_id: userIdToUse,
-          name: newEmployee.name!,
-          email: newEmployee.email!,
-          area: newEmployee.area,
-          role: newEmployee.role!,
-        })
-        .select()
-        .single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      showSuccess("Funcionário adicionado com sucesso!");
+      showSuccess("Convite enviado e funcionário adicionado com sucesso!");
     },
     onError: (error) => {
       showError("Erro ao adicionar funcionário: " + error.message);
@@ -126,6 +93,7 @@ const EmployeesPage: React.FC = () => {
           name: updatedEmployee.name,
           area: updatedEmployee.area,
           role: updatedEmployee.role,
+          avatar_url: updatedEmployee.avatar_url,
         })
         .eq('id', updatedEmployee.id!)
         .select()
@@ -145,6 +113,9 @@ const EmployeesPage: React.FC = () => {
 
   const deleteEmployeeMutation = useMutation({
     mutationFn: async (employeeId: string) => {
+      // For deleting, we can directly delete the profile.
+      // Deleting the user from auth.users would require a server-side function as well.
+      // For simplicity, we'll just delete the profile here.
       const { error } = await supabase.from('profiles').delete().eq('id', employeeId);
       if (error) throw error;
     },
@@ -159,7 +130,7 @@ const EmployeesPage: React.FC = () => {
   });
 
   const handleAddEmployee = (employee: Partial<Profile>) => {
-    createEmployeeMutation.mutate(employee);
+    inviteEmployeeMutation.mutate(employee);
   };
 
   const handleEditEmployee = (employee: Profile) => {

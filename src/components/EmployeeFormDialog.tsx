@@ -1,6 +1,6 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Button } => '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,6 +21,7 @@ const employeeFormSchema = z.object({
   email: z.string().email({ message: "E-mail inválido." }),
   area: z.string().optional(),
   role: z.enum(['employee', 'manager']).default('employee'),
+  avatar_url: z.string().url({ message: "URL do avatar inválida." }).optional().or(z.literal('')),
 });
 
 const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
@@ -36,6 +37,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
       email: initialData?.email || '',
       area: initialData?.area || '',
       role: initialData?.role || 'employee',
+      avatar_url: initialData?.avatar_url || '',
     },
   });
 
@@ -46,6 +48,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
         email: initialData.email,
         area: initialData.area || '',
         role: initialData.role,
+        avatar_url: initialData.avatar_url || '',
       });
     } else {
       form.reset({
@@ -53,6 +56,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
         email: '',
         area: '',
         role: 'employee',
+        avatar_url: '',
       });
     }
   }, [initialData, form]);
@@ -139,6 +143,23 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="avatar_url" className="text-right">
+              URL do Avatar
+            </Label>
+            <Input
+              id="avatar_url"
+              type="url"
+              {...form.register('avatar_url')}
+              className="col-span-3"
+              placeholder="https://example.com/avatar.jpg"
+            />
+            {form.formState.errors.avatar_url && (
+              <p className="col-span-4 text-right text-sm text-red-500">
+                {form.formState.errors.avatar_url.message}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="submit">{initialData ? 'Salvar Alterações' : 'Adicionar Funcionário'}</Button>
