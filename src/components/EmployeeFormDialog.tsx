@@ -9,34 +9,37 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Profile, UserRole } from '@/types/supabase';
 import { supabase } from '@/integrations/supabase/client';
-import { showError, showLoading, dismissToast } from '@/utils/toast';
+import { showError, showLoading, dismissToast, showSuccess } from '@/utils/toast';
 import { Loader2 } from 'lucide-react';
 
+// A função que chama a Edge Function foi movida para dentro do componente.
+// A prop `onSuccess` será usada para notificar o componente pai (ex: para recarregar dados).
 interface EmployeeFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (employee: Partial<Profile>) => void;
+  onSuccess: () => void;
   initialData?: Profile | null;
 }
 
+// O schema do Zod agora valida apenas os campos de texto.
+// O arquivo não é mais parte do schema, pois será tratado separadamente.
 const employeeFormSchema = z.object({
   name: z.string().min(1, { message: "Nome é obrigatório." }),
   email: z.string().email({ message: "E-mail inválido." }),
   area: z.string().optional().transform(e => e === "" ? undefined : e),
   role: z.enum(['employee', 'manager']).default('employee'),
-  // avatar_url agora pode ser uma string (URL existente) ou um File (novo upload)
-  avatar_url: z.union([z.literal(''), z.string().url({ message: "URL do avatar inválida." }), z.instanceof(File)]).optional().transform(e => e === "" ? undefined : e),
 });
 
 const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
   isOpen,
   onClose,
-  onSubmit,
+  onSuccess,
   initialData,
 }) => {
+  // Estado para o arquivo selecionado, preview e status de envio.
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
-  const [isUploading, setIsUploading] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const form = useForm<z.infer<typeof employeeFormSchema>>({
     resolver: zodResolver(employeeFormSchema),
@@ -45,10 +48,10 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
       email: initialData?.email || '',
       area: initialData?.area || '',
       role: initialData?.role || 'employee',
-      avatar_url: initialData?.avatar_url || '',
     },
   });
 
+  // Efeito para resetar o formulário quando os dados iniciais mudam
   React.useEffect(() => {
     if (initialData) {
       form.reset({
@@ -56,80 +59,98 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
         email: initialData.email,
         area: initialData.area || '',
         role: initialData.role,
-        avatar_url: initialData.avatar_url || '',
       });
       setAvatarPreview(initialData.avatar_url || null);
-      setSelectedFile(null); // Clear selected file on initial data load
+      setSelectedFile(null);
     } else {
       form.reset({
         name: '',
         email: '',
         area: '',
         role: 'employee',
-        avatar_url: '',
       });
       setAvatarPreview(null);
       setSelectedFile(null);
     }
-  }, [initialData, form]);
+  }, [initialData, form, isOpen]); // Adicionado `isOpen` para resetar ao abrir
 
+  // Manipula a seleção de um novo arquivo de imagem
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
       setAvatarPreview(URL.createObjectURL(file));
-      form.setValue('avatar_url', file); // Set the file object to the form value
     } else {
       setSelectedFile(null);
-      setAvatarPreview(initialData?.avatar_url || null); // Revert to initial or null
-      form.setValue('avatar_url', initialData?.avatar_url || ''); // Revert form value
+      setAvatarPreview(initialData?.avatar_url || null);
     }
   };
 
+  // Função principal de envio do formulário
   const handleSubmit = async (values: z.infer<typeof employeeFormSchema>) => {
-    let finalAvatarUrl: string | undefined = undefined;
+    // Não faz sentido editar um funcionário neste formulário, pois ele convida novos usuários.
+    // Esta lógica é para criar um novo funcionário.
+    if (initialData) {
+        showError("Este formulário é apenas para adicionar novos funcionários.");
+        return;
+    }
+
+    setIsSubmitting(true);
     let loadingToastId: string | undefined;
 
     try {
+      loadingToastId = showLoading("Convidando funcionário...");
+
+      // 1. Crie um objeto FormData para enviar dados e arquivos.
+      const formData = new FormData();
+      formData.append('name', values.name);
+      formData.append('email', values.email);
+      formData.append('role', values.role);
+      if (values.area) {
+        formData.append('area', values.area);
+      }
       if (selectedFile) {
-        setIsUploading(true);
-        loadingToastId = showLoading("Fazendo upload da imagem...");
-        const fileExtension = selectedFile.name.split('.').pop();
-        const fileName = `${initialData?.id || crypto.randomUUID()}.${fileExtension}`;
-        const filePath = `avatars/${fileName}`;
-
-        const { data, error } = await supabase.storage
-          .from('avatars') // Assuming a bucket named 'avatars'
-          .upload(filePath, selectedFile, {
-            cacheControl: '3600',
-            upsert: true,
-          });
-
-        if (error) {
-          throw new Error("Erro ao fazer upload da imagem: " + error.message);
-        }
-        finalAvatarUrl = supabase.storage.from('avatars').getPublicUrl(filePath).data.publicUrl;
-      } else if (initialData?.avatar_url && !form.formState.dirtyFields.avatar_url) {
-        // If no new file selected and avatar_url wasn't explicitly cleared, keep existing
-        finalAvatarUrl = initialData.avatar_url;
+        // O nome da chave 'avatar_file' deve corresponder ao que a Edge Function espera.
+        formData.append('avatar_file', selectedFile, selectedFile.name);
       }
-      // If selectedFile is null and initialData.avatar_url is null/undefined, finalAvatarUrl remains undefined
+      
+      // 2. Obtenha o token de sessão para autorizar a chamada à Edge Function.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Usuário não autenticado. Por favor, faça login novamente.");
+      }
+      
+      // 3. Chame a Edge Function usando fetch.
+      // !!! ATENÇÃO: Substitua 'invite-employee' pelo nome real da sua função !!!
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-employee`;
 
-      onSubmit({
-        ...values,
-        id: initialData?.id,
-        user_id: initialData?.user_id,
-        avatar_url: finalAvatarUrl, // Pass the uploaded URL or existing URL
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          // NÃO defina 'Content-Type'. O navegador o definirá automaticamente
+          // para 'multipart/form-data' com o boundary correto.
+        },
+        body: formData, // Envie o objeto FormData diretamente.
       });
-      onClose();
-    } catch (error: any) {
-      showError(error.message);
-      console.error("Submission error:", error);
-    } finally {
-      setIsUploading(false);
-      if (loadingToastId) {
-        dismissToast(loadingToastId);
+
+      // 4. Trate a resposta.
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Falha ao convidar o funcionário.");
       }
+
+      dismissToast(loadingToastId);
+      showSuccess("Convite enviado com sucesso!");
+      onSuccess(); // Notifica o componente pai sobre o sucesso.
+      onClose();   // Fecha o diálogo.
+
+    } catch (error: any) {
+      if (loadingToastId) dismissToast(loadingToastId);
+      showError(error.message);
+      console.error("Erro no envio:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -153,6 +174,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
               id="name"
               {...form.register('name')}
               className="col-span-3"
+              autoComplete="name"
             />
             {form.formState.errors.name && (
               <p className="col-span-4 text-right text-sm text-red-500">
@@ -164,13 +186,13 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             <Label htmlFor="email" className="text-right">
               Email
             </Label>
-            {/* Desabilita edição de email para usuários existentes */}
             <Input
               id="email"
               type="email"
               {...form.register('email')}
               className="col-span-3"
               disabled={!!initialData}
+              autoComplete="email"
             />
             {form.formState.errors.email && (
               <p className="col-span-4 text-right text-sm text-red-500">
@@ -193,7 +215,7 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
               Função
             </Label>
             <Select
-              onValueChange={(value: UserRole) => form.setValue('role', value)}
+              onValueChange={(value: UserRole) => form.setValue('role', value, { shouldValidate: true })}
               value={form.watch('role')}
             >
               <SelectTrigger className="col-span-3">
@@ -215,25 +237,21 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             <Input
               id="avatar_file"
               type="file"
-              accept="image/png, image/jpeg"
+              accept="image/png, image/jpeg, image/webp"
               onChange={handleFileChange}
               className="col-span-3"
             />
             {avatarPreview && (
-              <div className="col-span-4 flex justify-end">
-                <img src={avatarPreview} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover mt-2" />
+              <div className="col-span-4 flex justify-end pr-4">
+                <img src={avatarPreview} alt="Pré-visualização do Avatar" className="w-24 h-24 rounded-full object-cover mt-2" />
               </div>
-            )}
-            {form.formState.errors.avatar_url && (
-              <p className="col-span-4 text-right text-sm text-red-500">
-                {form.formState.errors.avatar_url.message}
-              </p>
             )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isUploading}>
-              {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {initialData ? 'Salvar Alterações' : 'Adicionar Funcionário'}
+            <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={isSubmitting || !!initialData}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {initialData ? 'Edição Indisponível' : 'Adicionar Funcionário'}
             </Button>
           </DialogFooter>
         </form>
@@ -242,4 +260,4 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
   );
 };
 
-export default EmployeeFormDialog;
+export default EmployeeFormDialog;```
