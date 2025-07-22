@@ -47,7 +47,7 @@ const EmployeesPage: React.FC = () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false }); // Ordena os mais novos primeiro
+        .order('created_at', { ascending: false }); // <<< CORREÇÃO APLICADA AQUI
       if (error) throw error;
       return data;
     },
@@ -64,20 +64,8 @@ const EmployeesPage: React.FC = () => {
     console.error("Error fetching employees:", employeesError);
   }
 
-  // --- REMOVIDO ---
-  // A mutação para convidar um funcionário foi movida para dentro do EmployeeFormDialog.
-  // Esta lógica não é mais necessária aqui.
-  /*
-  const inviteEmployeeMutation = useMutation({
-    mutationFn: async (newEmployee: Partial<Profile>) => { ... },
-    ...
-  });
-  */
-
   const updateEmployeeMutation = useMutation({
     mutationFn: async (updatedEmployee: Partial<Profile>) => {
-      // A lógica de atualização permanece aqui, pois o diálogo de formulário foi
-      // especializado para apenas ADICIONAR novos funcionários via Edge Function.
       const { data, error } = await supabase
         .from('profiles')
         .update({
@@ -116,32 +104,14 @@ const EmployeesPage: React.FC = () => {
       console.error("Error deleting employee:", error);
     },
   });
-  
-  // --- REMOVIDO ---
-  // Esta função não é mais necessária, pois o Dialog cuida de si mesmo.
-  // const handleAddEmployee = (employee: Partial<Profile>) => {
-  //   inviteEmployeeMutation.mutate(employee);
-  // };
-  
-  // --- ADICIONADO ---
-  // Esta é a função que será passada para a prop `onSuccess` do Dialog.
-  // Ela será executada QUANDO o convite for um sucesso.
+
   const handleInviteSuccess = () => {
-    setIsFormOpen(false); // Fecha o modal
-    queryClient.invalidateQueries({ queryKey: ['employees'] }); // Invalida o cache para recarregar a lista
+    setIsFormOpen(false);
+    queryClient.invalidateQueries({ queryKey: ['employees'] });
   };
 
   const handleEditEmployee = (employee: Profile) => {
-    // AVISO: O seu EmployeeFormDialog foi otimizado para CRIAR funcionários.
-    // Usá-lo para editar exigiria uma lógica diferente (sem chamada à Edge Function).
-    // Por enquanto, esta função abrirá o diálogo, mas a submissão de edição precisa ser tratada.
     showError("A funcionalidade de edição ainda precisa ser implementada em um formulário separado.");
-    // setEditingEmployee(employee);
-    // setIsFormOpen(true);
-  };
-
-  const handleUpdateEmployee = (employee: Partial<Profile>) => {
-    updateEmployeeMutation.mutate(employee);
   };
 
   const handleDeleteEmployee = (employeeId: string) => {
@@ -248,11 +218,6 @@ const EmployeesPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* --- MODIFICADO ---
-          A chamada ao diálogo agora usa a prop `onSuccess` em vez de `onSubmit`.
-          A prop `initialData` foi removida, pois este formulário é sempre para adicionar.
-          A prop `isOpen` agora só é verdadeira se não estivermos no modo de edição.
-      */}
       <EmployeeFormDialog
         isOpen={isFormOpen && !editingEmployee}
         onClose={() => setIsFormOpen(false)}
