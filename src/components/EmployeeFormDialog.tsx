@@ -101,12 +101,13 @@ const EmployeeFormDialog: React.FC<EmployeeFormDialogProps> = ({
             <Label htmlFor="email" className="text-right">
               Email
             </Label>
+            {/* Disable email editing for existing users */}
             <Input
               id="email"
               type="email"
               {...form.register('email')}
               className="col-span-3"
-              disabled={!!initialData} {/* Disable email editing for existing users */}
+              disabled={!!initialData} 
             />
             {form.formState.errors.email && (
               <p className="col-span-4 text-right text-sm text-red-500">
