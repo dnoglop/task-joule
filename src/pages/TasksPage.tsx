@@ -10,8 +10,9 @@ import TaskFormDialog from '@/components/TaskFormDialog';
 import { Task, Profile, Program } from '@/types/supabase';
 import { useSession } from '@/contexts/SessionContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label'; // Adicionando esta importação
-import { format } from 'date-fns'; // Certifique-se de que format está importado para o Dialog de detalhes
+import { Label } from '@/components/ui/label';
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge'; // Adicionando esta importação
 
 const TasksPage: React.FC = () => {
   const queryClient = useQueryClient();
