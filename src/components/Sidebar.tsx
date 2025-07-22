@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, ListTodo, Users, BarChart2, LogOut } from 'lucide-react';
+import { Home, ListTodo, Users, BarChart2, LogOut, UploadCloud } from 'lucide-react'; // Adicionando UploadCloud
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/contexts/SessionContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -85,6 +85,20 @@ const Sidebar: React.FC = () => {
               <span>{item.name}</span>
             </Link>
           ))}
+          {profile?.role === 'manager' && ( // Apenas para gestores
+            <Link
+              to="/upload"
+              className={cn(
+                "flex items-center p-3 rounded-md transition-colors duration-200",
+                location.pathname === '/upload'
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <UploadCloud className="mr-3 h-5 w-5" />
+              <span>Upload de Tarefas</span>
+            </Link>
+          )}
         </nav>
       </div>
       <div className="p-4 border-t border-sidebar-border">
