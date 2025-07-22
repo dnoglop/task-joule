@@ -47,7 +47,7 @@ const EmployeesPage: React.FC = () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .orderBy('created_at', { ascending: false }); // Ordena os mais novos primeiro
+        .order('created_at', { ascending: false }); // Ordena os mais novos primeiro
       if (error) throw error;
       return data;
     },
