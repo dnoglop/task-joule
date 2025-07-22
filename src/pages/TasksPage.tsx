@@ -10,6 +10,8 @@ import TaskFormDialog from '@/components/TaskFormDialog';
 import { Task, Profile, Program } from '@/types/supabase';
 import { useSession } from '@/contexts/SessionContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label'; // Adicionando esta importação
+import { format } from 'date-fns'; // Certifique-se de que format está importado para o Dialog de detalhes
 
 const TasksPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -165,6 +167,23 @@ const TasksPage: React.FC = () => {
   const handleViewTask = (task: Task) => {
     setViewingTask(task);
     setIsViewDetailsOpen(true);
+  };
+
+  // Define statusColors and statusLabels here as they are used in the Task Details Dialog
+  const statusColors: Record<TaskStatus, string> = {
+    'pending': 'bg-yellow-500',
+    'in_progress': 'bg-blue-500',
+    'completed': 'bg-green-500',
+    'on_hold': 'bg-gray-500',
+    'cancelled': 'bg-red-500',
+  };
+
+  const statusLabels: Record<TaskStatus, string> = {
+    'pending': 'Pendente',
+    'in_progress': 'Em Progresso',
+    'completed': 'Concluída',
+    'on_hold': 'Em Espera',
+    'cancelled': 'Cancelada',
   };
 
   if (isLoadingCurrentUserProfile || isLoadingTasks || isLoadingEmployees || isLoadingPrograms) {
