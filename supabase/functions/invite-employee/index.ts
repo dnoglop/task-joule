@@ -23,21 +23,22 @@ serve(async (req) => {
     }
 
     // Create a Supabase client with the Service Role Key
-    // This key must be set as a secret in your Supabase project (e.g., SUPABASE_SERVICE_ROLE_KEY)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Invite the user by email
+    // Invite the user by email and set app_metadata directly
     const { data: invitedUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: {
         name: name,
         area: area,
-        role: role,
         avatar_url: avatar_url,
       },
-      redirectTo: `${Deno.env.get('SUPABASE_URL')}/auth/v1/callback`, // Or your desired redirect URL after email confirmation
+      app_metadata: {
+        role: role, // Set the role in app_metadata
+      },
+      redirectTo: `${Deno.env.get('VITE_SITE_URL')}/login`, // Use VITE_SITE_URL for redirect
     });
 
     if (inviteError) {
@@ -48,7 +49,9 @@ serve(async (req) => {
       });
     }
 
-    // Manually create the profile entry since inviteUserByEmail doesn't trigger handle_new_user
+    // Manually create the profile entry in public.profiles
+    // The 'role' column in public.profiles will still be used for direct database queries
+    // but the RLS policies will rely on app_metadata.role
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert({
@@ -57,7 +60,7 @@ serve(async (req) => {
         name: name,
         email: email,
         area: area,
-        role: role,
+        role: role, // Keep storing role in profiles table for consistency/other uses
         avatar_url: avatar_url,
       })
       .select()
