@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCSVReader } from 'react-papaparse';
 import TaskItemCard from '@/components/ui/TaskItemCard'; // Using the new TaskItemCard
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const statusColors: Record<TaskStatus, string> = {
   'pending': 'bg-gray-50 text-gray-600',
