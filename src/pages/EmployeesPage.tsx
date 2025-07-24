@@ -3,14 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
 import { Loader2, UserPlus, Edit, Eye, Trash2 } from 'lucide-react';
-import { Profile } from '@/types/supabase';
+import { Profile, Task } from '@/types/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import EmployeeFormDialog from '@/components/EmployeeFormDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { motion } from 'framer-motion';
+import TeamMemberCard from '@/components/ui/TeamMemberCard'; // New custom TeamMemberCard
 
 const EmployeesPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -47,7 +48,18 @@ const EmployeesPage: React.FC = () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false }); // <<< CORREÇÃO APLICADA AQUI
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: currentUserProfile?.role === 'manager',
+  });
+
+  // Fetch tasks for all employees to calculate metrics
+  const { data: allTasks, isLoading: isLoadingAllTasks, error: allTasksError } = useQuery<Task[]>({
+    queryKey: ['allTasksForEmployees'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('tasks').select('assigned_to, status, estimated_hours, due_date');
       if (error) throw error;
       return data;
     },
@@ -62,6 +74,11 @@ const EmployeesPage: React.FC = () => {
   if (employeesError) {
     showError("Erro ao carregar funcionários: " + employeesError.message);
     console.error("Error fetching employees:", employeesError);
+  }
+
+  if (allTasksError) {
+    showError("Erro ao carregar tarefas para métricas de funcionários: " + allTasksError.message);
+    console.error("Error fetching tasks for employee metrics:", allTasksError);
   }
 
   const updateEmployeeMutation = useMutation({
@@ -97,6 +114,7 @@ const EmployeesPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['allTasksForEmployees'] }); // Invalidate tasks as well
       showSuccess("Funcionário excluído com sucesso!");
     },
     onError: (error) => {
@@ -112,6 +130,8 @@ const EmployeesPage: React.FC = () => {
 
   const handleEditEmployee = (employee: Profile) => {
     showError("A funcionalidade de edição ainda precisa ser implementada em um formulário separado.");
+    // setEditingEmployee(employee);
+    // setIsFormOpen(true);
   };
 
   const handleDeleteEmployee = (employeeId: string) => {
@@ -127,7 +147,15 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
-  if (isLoadingCurrentUserProfile || isLoadingEmployees) {
+  const getEmployeeMetrics = (employeeId: string) => {
+    const employeeTasks = allTasks?.filter(task => task.assigned_to === employeeId) || [];
+    const completedTasks = employeeTasks.filter(task => task.status === 'completed').length;
+    const delayedTasks = employeeTasks.filter(task => task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed' && task.status !== 'cancelled').length;
+    const estimatedHours = employeeTasks.reduce((sum, task) => sum + (task.estimated_hours || 0), 0);
+    return { completedTasks, delayedTasks, estimatedHours };
+  };
+
+  if (isLoadingCurrentUserProfile || isLoadingEmployees || isLoadingAllTasks) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-64px)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -144,79 +172,52 @@ const EmployeesPage: React.FC = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Gestão de Funcionários</h1>
+    <motion.div
+      className="p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Equipe do Instituto Joule</h2>
+          <p className="text-gray-500">Gerencie e visualize informações da sua equipe</p>
+        </div>
+        
         {currentUserProfile?.role === 'manager' && (
-          <Button onClick={() => { setEditingEmployee(null); setIsFormOpen(true); }}>
-            <UserPlus className="mr-2 h-4 w-4" /> Adicionar Funcionário
-          </Button>
+          <motion.button
+            onClick={() => { setEditingEmployee(null); setIsFormOpen(true); }}
+            className="bg-orange-500 text-white px-6 py-2 rounded-xl hover:bg-orange-600 transition-colors shadow-lg"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <UserPlus className="inline mr-2" size={18} />
+            Adicionar Membro
+          </motion.button>
         )}
       </div>
-      <p className="text-gray-700 dark:text-gray-300 mb-8">
-        Visualize e gerencie as informações dos funcionários e suas métricas de desempenho.
-      </p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Funcionários</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {employees && employees.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Área</TableHead>
-                  <TableHead>Função</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {employees.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.email}</TableCell>
-                    <TableCell>{employee.area || 'N/A'}</TableCell>
-                    <TableCell>{employee.role === 'manager' ? 'Gestor' : 'Funcionário'}</TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/employees/${employee.id}`)}
-                          title="Ver Detalhes"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditEmployee(employee)}
-                          title="Editar Funcionário"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteEmployee(employee.id)}
-                          title="Excluir Funcionário"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-muted-foreground text-center">Nenhum funcionário encontrado.</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {employees && employees.length > 0 ? (
+          employees.map((employee, index) => {
+            const metrics = getEmployeeMetrics(employee.id);
+            return (
+              <TeamMemberCard
+                key={employee.id}
+                member={employee}
+                index={index}
+                onClick={() => navigate(`/employees/${employee.id}`)}
+                completedTasks={metrics.completedTasks}
+                delayedTasks={metrics.delayedTasks}
+                estimatedHours={metrics.estimatedHours}
+              />
+            );
+          })
+        ) : (
+          <p className="text-muted-foreground text-center col-span-full">Nenhum funcionário encontrado.</p>
+        )}
+      </div>
 
       <EmployeeFormDialog
         isOpen={isFormOpen && !editingEmployee}
@@ -240,7 +241,7 @@ const EmployeesPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 };
 

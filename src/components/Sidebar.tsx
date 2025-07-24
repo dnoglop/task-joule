@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, ListTodo, Users, BarChart2, LogOut, UploadCloud, FolderKanban } from 'lucide-react'; // Adicionando FolderKanban
+import { motion } from 'framer-motion';
+import { Home, ListTodo, Users, BarChart2, LogOut, UploadCloud, FolderKanban, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/contexts/SessionContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,10 +13,11 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Menu } from 'lucide-react';
 
 const navItems = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Tarefas', href: '/tasks', icon: ListTodo },
-  { name: 'Funcionários', href: '/employees', icon: Users },
-  { name: 'Relatórios', href: '/reports', icon: BarChart2 },
+  { id: 'dashboard', name: 'Dashboard', href: '/', icon: Home },
+  { id: 'tarefas', name: 'Tarefas', href: '/tasks', icon: ListTodo },
+  { id: 'relatorios', name: 'Relatórios', href: '/reports', icon: BarChart2 },
+  { id: 'programas', name: 'Programas', href: '/programs', icon: FolderKanban },
+  { id: 'time', name: 'Time', href: '/employees', icon: Users },
 ];
 
 const Sidebar: React.FC = () => {
@@ -23,6 +25,7 @@ const Sidebar: React.FC = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [profile, setProfile] = React.useState<any>(null);
+  const [hoveredItem, setHoveredItem] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const fetchProfile = async () => {
@@ -52,80 +55,102 @@ const Sidebar: React.FC = () => {
   };
 
   const renderSidebarContent = () => (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="p-4 border-b border-sidebar-border">
-        <h2 className="text-2xl font-bold text-sidebar-primary">Instituto Joule</h2>
+    <motion.div 
+      className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-gray-100 shadow-xl"
+      initial={{ x: -264 }}
+      animate={{ x: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="p-6 border-b border-gray-100">
+        <h1 className="text-2xl font-bold text-orange-600">Instituto Joule</h1>
+        <p className="text-sm text-gray-500 mt-1">Gerenciamento de Tarefas</p>
       </div>
-      <div className="flex-1 p-4 space-y-2">
-        {profile && (
-          <div className="flex items-center space-x-3 p-2 mb-4 bg-sidebar-accent rounded-md">
-            <Avatar>
-              <AvatarImage src={profile.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${profile.name}`} alt={profile.name} />
-              <AvatarFallback>{profile.name?.charAt(0) || 'IJ'}</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium text-sidebar-accent-foreground">{profile.name}</p>
-              <p className="text-sm text-sidebar-foreground">{profile.role === 'manager' ? 'Gestor' : 'Funcionário'}</p>
-            </div>
-          </div>
-        )}
-        <nav className="space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              to={item.href}
-              className={cn(
-                "flex items-center p-3 rounded-md transition-colors duration-200",
-                location.pathname === item.href
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+      
+      <nav className="mt-8 flex-1">
+        {navItems.map((item) => (
+          <motion.div
+            key={item.id}
+            className={cn(
+              "mx-4 mb-2 rounded-xl cursor-pointer transition-all duration-200",
+              location.pathname === item.href
+                ? 'bg-orange-50 text-orange-600 shadow-md'
+                : 'text-gray-600 hover:bg-gray-50'
+            )}
+            whileHover={{ x: 4, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onMouseEnter={() => setHoveredItem(item.id)}
+            onMouseLeave={() => setHoveredItem(null)}
+          >
+            <Link to={item.href} className="flex items-center p-4">
+              <item.icon 
+                size={20} 
+                className={cn("mr-3", activeTab === item.id ? 'text-orange-600' : 'text-gray-500')} 
+              />
+              <span className="font-medium">{item.name}</span>
+              {hoveredItem === item.id && (
+                <motion.div
+                  className="ml-auto w-2 h-2 bg-orange-400 rounded-full"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.2 }}
+                />
               )}
-            >
-              <item.icon className="mr-3 h-5 w-5" />
-              <span>{item.name}</span>
             </Link>
-          ))}
-          {profile?.role === 'manager' && ( // Apenas para gestores
-            <>
-              <Link
-                to="/programs"
-                className={cn(
-                  "flex items-center p-3 rounded-md transition-colors duration-200",
-                  location.pathname === '/programs'
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <FolderKanban className="mr-3 h-5 w-5" />
-                <span>Programas</span>
-              </Link>
-              <Link
-                to="/upload"
-                className={cn(
-                  "flex items-center p-3 rounded-md transition-colors duration-200",
-                  location.pathname === '/upload'
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <UploadCloud className="mr-3 h-5 w-5" />
-                <span>Upload de Tarefas</span>
-              </Link>
-            </>
-          )}
-        </nav>
-      </div>
-      <div className="p-4 border-t border-sidebar-border">
+          </motion.div>
+        ))}
+        {profile?.role === 'manager' && (
+          <motion.div
+            className={cn(
+              "mx-4 mb-2 rounded-xl cursor-pointer transition-all duration-200",
+              location.pathname === '/upload'
+                ? 'bg-orange-50 text-orange-600 shadow-md'
+                : 'text-gray-600 hover:bg-gray-50'
+            )}
+            whileHover={{ x: 4, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onMouseEnter={() => setHoveredItem('upload')}
+            onMouseLeave={() => setHoveredItem(null)}
+          >
+            <Link to="/upload" className="flex items-center p-4">
+              <UploadCloud size={20} className={cn("mr-3", location.pathname === '/upload' ? 'text-orange-600' : 'text-gray-500')} />
+              <span className="font-medium">Upload de Tarefas</span>
+              {hoveredItem === 'upload' && (
+                <motion.div
+                  className="ml-auto w-2 h-2 bg-orange-400 rounded-full"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.2 }}
+                />
+              )}
+            </Link>
+          </motion.div>
+        )}
+      </nav>
+
+      <div className="p-4">
+        <motion.div
+          className="bg-orange-50 rounded-xl p-4 cursor-pointer"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <div className="flex items-center mb-2">
+            <Settings size={18} className="text-orange-600 mr-2" />
+            <span className="text-sm font-medium text-orange-800">Configurações</span>
+          </div>
+          <p className="text-xs text-orange-600">Personalize seu workspace</p>
+        </motion.div>
         <Button
           onClick={handleLogout}
-          className="w-full justify-start bg-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="w-full justify-start bg-transparent text-gray-600 hover:bg-gray-50 hover:text-orange-600 mt-4"
         >
           <LogOut className="mr-3 h-5 w-5" />
           Sair
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
+
+  const activeTab = navItems.find(item => item.href === location.pathname)?.id || 'dashboard';
 
   if (isMobile) {
     return (

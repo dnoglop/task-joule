@@ -3,23 +3,24 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSession } from '@/contexts/SessionContext';
 import { showError } from '@/utils/toast';
-import { Loader2, ListTodo, CheckCircle, Clock, XCircle, Calendar as CalendarIcon, Hourglass } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, ListTodo, CheckSquare, Users, Target, Plus, User } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Keep shadcn Card for general use
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Profile, Task, Program } from '@/types/supabase';
-import TaskStatusChart from '@/components/TaskStatusChart';
 import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { motion, AnimatePresence } from 'framer-motion';
+import MetricCard from '@/components/ui/MetricCard'; // New custom MetricCard
+import TaskItemCard from '@/components/ui/TaskItemCard'; // New custom TaskItemCard
 
 const DashboardPage: React.FC = () => {
   const { session } = useSession();
   const userId = session?.user?.id;
 
-  // --- Adicionado: Estados para os filtros ---
   const [selectedProgram, setSelectedProgram] = React.useState<string | 'all'>('all');
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>(undefined);
 
@@ -35,7 +36,7 @@ const DashboardPage: React.FC = () => {
     enabled: !!userId,
   });
 
-  // --- Adicionado: Fetch de todos os programas para o filtro ---
+  // Fetch de todos os programas para o filtro
   const { data: programs, isLoading: isLoadingPrograms, error: programsError } = useQuery<Program[]>({
     queryKey: ['allPrograms'],
     queryFn: async () => {
@@ -43,23 +44,31 @@ const DashboardPage: React.FC = () => {
       if (error) throw error;
       return data;
     },
-    enabled: profile?.role === 'manager', // Apenas gestores precisam do filtro de programa
+    enabled: profile?.role === 'manager',
   });
 
-  // --- Modificado: Fetch de tarefas agora reage aos filtros ---
+  // Fetch de todos os perfis para mapear assigned_to
+  const { data: allProfiles, isLoading: isLoadingAllProfiles, error: allProfilesError } = useQuery<Profile[]>({
+    queryKey: ['allProfiles'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('id, name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch de tarefas agora reage aos filtros
   const { data: tasks, isLoading: isLoadingTasks, error: tasksError } = useQuery<Task[]>({
-    queryKey: ['tasks', profile?.role, profile?.id, selectedProgram, dateRange], // Chave de query inclui os filtros
+    queryKey: ['tasks', profile?.role, profile?.id, selectedProgram, dateRange],
     queryFn: async () => {
       if (!profile) return [];
       
       let query = supabase.from('tasks').select('*');
 
-      // Filtro padrão por funcionário
       if (profile.role === 'employee') {
         query = query.eq('assigned_to', profile.id);
       }
 
-      // --- Adicionado: Lógica de filtragem na query ---
       if (selectedProgram !== 'all') {
         query = query.eq('program_id', selectedProgram);
       }
@@ -74,22 +83,21 @@ const DashboardPage: React.FC = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!profile, // Só busca tarefas se o perfil estiver carregado
+    enabled: !!profile,
   });
 
-  if (profileError || programsError || tasksError) {
-    const error = profileError || programsError || tasksError;
+  if (profileError || programsError || tasksError || allProfilesError) {
+    const error = profileError || programsError || tasksError || allProfilesError;
     showError("Erro ao carregar dados do dashboard: " + error.message);
     console.error("Dashboard data fetching error:", error);
   }
 
-  // --- Adicionado: Função para limpar os filtros ---
   const clearFilters = () => {
     setSelectedProgram('all');
     setDateRange(undefined);
   };
 
-  const isLoading = isLoadingProfile || isLoadingTasks || isLoadingPrograms;
+  const isLoading = isLoadingProfile || isLoadingTasks || isLoadingPrograms || isLoadingAllProfiles;
 
   if (isLoading) {
     return (
@@ -110,155 +118,126 @@ const DashboardPage: React.FC = () => {
   // Cálculos dos cards
   const totalTasks = tasks?.length || 0;
   const completedTasks = tasks?.filter(task => task.status === 'completed').length || 0;
-  const pendingTasks = tasks?.filter(task => task.status === 'pending' || task.status === 'in_progress' || task.status === 'on_hold').length || 0;
-  const overdueTasks = tasks?.filter(task => task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed' && task.status !== 'cancelled').length || 0;
-  
-  // --- Adicionado: Cálculo do total de horas ---
-  const totalHours = tasks?.reduce((acc, task) => acc + (task.estimated_hours || 0), 0) || 0;
+  const activeProjects = programs?.length || 0; // Assuming all fetched programs are active
+  const teamMembers = allProfiles?.length || 0; // Total members
+  const completionRate = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(0) : 0;
+
+  // Mock data for monthly progress (replace with real data if available)
+  const monthlyProgressData = [
+    { month: 'Jan', value: 65 },
+    { month: 'Fev', value: 80 },
+    { month: 'Mar', value: 45 },
+    { month: 'Abr', value: 90 },
+    { month: 'Mai', value: 70 },
+    { month: 'Jun', value: 85 },
+    { month: 'Jul', value: 95 },
+  ];
+
+  // Get recent tasks (e.g., last 3, not completed)
+  const recentTasks = tasks
+    ?.filter(task => task.status !== 'completed')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3) || [];
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-        Dashboard {profile.role === 'manager' ? 'do Gestor' : 'do Funcionário'}
-      </h1>
-      <p className="text-gray-700 dark:text-gray-300 mb-6">
-        Bem-vindo, {profile.name}! Aqui você verá um resumo das tarefas e indicadores importantes.
-      </p>
+    <motion.div
+      className="p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      {/* Métricas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <MetricCard
+          label="Tarefas Concluídas"
+          value={completedTasks}
+          change="+12%"
+          icon={CheckSquare}
+          index={0}
+        />
+        <MetricCard
+          label="Projetos Ativos"
+          value={activeProjects}
+          change="+5%"
+          icon={Folder}
+          index={1}
+        />
+        <MetricCard
+          label="Membros do Time"
+          value={teamMembers}
+          change="+2%"
+          icon={Users}
+          index={2}
+        />
+        <MetricCard
+          label="Taxa de Conclusão"
+          value={`${completionRate}%`}
+          change="+8%"
+          icon={Target}
+          index={3}
+        />
+      </div>
 
-      {/* --- Adicionado: Seção de Filtros --- */}
-      {profile.role === 'manager' && (
-        <div className="flex flex-wrap items-center gap-4 mb-8 p-4 bg-muted/50 rounded-lg">
-          <div className="flex-grow">
-            <label className="text-sm font-medium mb-1 block">Programa</label>
-            <Select value={selectedProgram} onValueChange={setSelectedProgram}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um programa" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Programas</SelectItem>
-                {programs?.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico de Progresso Mensal */}
+        <motion.div
+          className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-lg"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800">Progresso Mensal</h3>
+            <Button variant="link" className="text-orange-600 hover:text-orange-700 text-sm font-medium p-0 h-auto">
+              Ver mais
+            </Button>
           </div>
-          <div className="flex-grow">
-            <label className="text-sm font-medium mb-1 block">Intervalo de Datas</label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant={"outline"}
-                  className="w-full justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      <>
-                        {format(dateRange.from, "LLL dd, y", { locale: ptBR })} -{' '}
-                        {format(dateRange.to, "LLL dd, y", { locale: ptBR })}
-                      </>
-                    ) : (
-                      format(dateRange.from, "LLL dd, y", { locale: ptBR })
-                    )
-                  ) : (
-                    <span>Selecione um intervalo</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange?.from}
-                  selected={dateRange}
-                  onSelect={setDateRange}
-                  numberOfMonths={2}
+          
+          <div className="h-64 bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl flex items-end justify-center p-4">
+            {monthlyProgressData.map((data, index) => (
+              <motion.div
+                key={data.month}
+                className="bg-orange-500 rounded-t-lg mx-1 flex-1 max-w-12"
+                initial={{ height: 0 }}
+                animate={{ height: `${data.value}%` }}
+                transition={{ delay: 0.5 + index * 0.1, duration: 0.6 }}
+              />
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Tarefas Recentes */}
+        <motion.div
+          className="bg-white rounded-2xl p-6 shadow-lg"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800">Tarefas Recentes</h3>
+            <Button variant="ghost" size="icon" className="text-orange-600 hover:bg-orange-50 hover:text-orange-700">
+              <Plus size={20} />
+            </Button>
+          </div>
+          
+          <div className="space-y-4">
+            {recentTasks.length > 0 ? (
+              recentTasks.map((task, index) => (
+                <TaskItemCard
+                  key={task.id}
+                  task={task}
+                  assigneeName={allProfiles?.find(p => p.id === task.assigned_to)?.name || 'N/A'}
+                  index={index}
                 />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <Button onClick={clearFilters} variant="ghost" className="self-end">Limpar Filtros</Button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        {/* --- Adicionado: Card de Total de Horas --- */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Horas (Estimado)</CardTitle>
-            <Hourglass className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalHours.toFixed(1)}</div>
-            <p className="text-xs text-muted-foreground">Soma das horas das tarefas filtradas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Tarefas</CardTitle>
-            <ListTodo className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalTasks}</div>
-            <p className="text-xs text-muted-foreground">Tarefas no filtro atual</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tarefas Concluídas</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{completedTasks}</div>
-            <p className="text-xs text-muted-foreground">Tarefas finalizadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tarefas Pendentes</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingTasks}</div>
-            <p className="text-xs text-muted-foreground">Aguardando ou em progresso</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tarefas Atrasadas</CardTitle>
-            <XCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{overdueTasks}</div>
-            <p className="text-xs text-muted-foreground">Com prazo vencido</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Gráfico de Status de Tarefas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {tasks && tasks.length > 0 ? (
-              <TaskStatusChart tasks={tasks} />
+              ))
             ) : (
-              <p className="text-muted-foreground text-center">Nenhuma tarefa para exibir no gráfico.</p>
+              <p className="text-muted-foreground text-center">Nenhuma tarefa recente encontrada.</p>
             )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Atividade Recente</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">Lista de atividades recentes virá aqui...</p>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
