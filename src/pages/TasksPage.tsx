@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCSVReader } from 'react-papaparse';
 import TaskItemCard from '@/components/ui/TaskItemCard'; // Using the new TaskItemCard
 
