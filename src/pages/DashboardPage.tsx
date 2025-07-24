@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSession } from '@/contexts/SessionContext';
 import { showError } from '@/utils/toast';
-import { Loader2, ListTodo, CheckSquare, Users, Target, Plus, User } from 'lucide-react';
+import { Loader2, ListTodo, CheckSquare, Users, Target, Plus, User, Folder } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Keep shadcn Card for general use
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
